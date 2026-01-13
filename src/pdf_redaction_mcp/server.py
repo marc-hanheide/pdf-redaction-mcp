@@ -8,15 +8,25 @@ This MCP server provides tools for:
 - Verifying redactions
 """
 
+import warnings
 import pymupdf
 import re
 import json
 import base64
 import io
+import uvicorn
 import argparse
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from fastmcp import FastMCP
+from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware import Middleware
+
+
+# Suppress known pymupdf SWIG deprecation warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module=".*", message=".*swigvarlink.*")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module=".*", message=".*SwigPyPacked.*")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module=".*", message=".*SwigPyObject.*")
 
 # Create the MCP server instance
 mcp = FastMCP("PDF Redaction Server")
@@ -1185,7 +1195,23 @@ Examples:
     elif args.transport in ("http", "sse"):
         print(f"Starting PDF Redaction MCP Server in {args.transport.upper()} mode...")
         print(f"Listening on {args.host}:{args.port}")
-        mcp.run(transport=args.transport, host=args.host, port=args.port)
+        middleware = [
+            Middleware(
+                CORSMiddleware,
+                allow_origins=["*"],  # Allow all origins; use specific origins for security
+                allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+                allow_headers=[
+                    "mcp-protocol-version",
+                    "mcp-session-id",
+                    "Authorization",
+                    "Content-Type",
+                ],
+                expose_headers=["mcp-session-id"],            )
+        ]
+        app = mcp.http_app(middleware=middleware)
+        
+        uvicorn.run(app, host=args.host, port=args.port)
+        #mcp.run(transport=args.transport, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

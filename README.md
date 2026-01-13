@@ -45,22 +45,34 @@ pdf-redaction-mcp
 
 ### Running the Server
 
-The server can be run in different transport modes:
-
-#### STDIO (Default - for Claude Desktop, Cursor, etc.)
+The server supports multiple transport modes and configurations via command-line flags:
 
 ```bash
+# Show all available options
+uv run pdf-redaction-mcp --help
+
+# STDIO mode (default) - for desktop clients
 uv run pdf-redaction-mcp
+
+# SSE mode - for mobile apps and remote clients
+uv run pdf-redaction-mcp --transport sse --port 8000
+
+# HTTP mode - for web-based clients  
+uv run pdf-redaction-mcp --transport http --host 0.0.0.0 --port 8080
+
+# With custom PDF directory (relative paths resolved against this)
+uv run pdf-redaction-mcp --pdf-dir /path/to/pdfs
+
+# Combined options
+uv run pdf-redaction-mcp --transport sse --port 8000 --pdf-dir ~/Documents/pdfs
 ```
 
-#### HTTP/SSE (for web-based clients)
+#### Command-Line Options
 
-```python
-from pdf_redaction_mcp.server import mcp
-
-# Run as HTTP server
-mcp.run(transport="sse")
-```
+- `--transport {stdio,http,sse}`: Transport mode (default: stdio)
+- `--host HOST`: Host to bind to for HTTP/SSE mode (default: 127.0.0.1)
+- `--port PORT`: Port to listen on for HTTP/SSE mode (default: 8000)
+- `--pdf-dir PDF_DIR`: Base directory for PDF files. Relative paths in tools will be resolved against this directory.
 
 ### Available Tools
 
@@ -333,21 +345,60 @@ Get metadata from an uploaded PDF.
 
 ## Configuration
 
+This section covers how to configure the PDF Redaction MCP Server with various MCP clients.
+
+**Quick Links:**
+- [Claude Desktop](#claude-desktop) - Most common desktop setup
+- [Cursor IDE](#cursor-ide) - For developers using Cursor
+- [Cline (VSCode)](#cline-vscode-extension) - VSCode MCP extension
+- [Other MCP Clients](#other-mcp-clients) - Generic STDIO configuration
+- [Remote/Mobile Setup](#remote-server-httpsse---for-mobile-apps) - For mobile apps and web clients
+
+---
+
 ### Claude Desktop
 
 Add to your `claude_desktop_config.json`:
+
+**Basic Configuration (STDIO mode):**
 
 ```json
 {
   "mcpServers": {
     "pdf-redaction": {
       "command": "uv",
-      "args": ["run", "pdf-redaction-mcp"],
-      "cwd": "/path/to/pdf-redaction-mcp"
+      "args": [
+        "--directory",
+        "/path/to/pdf-redaction-mcp",
+        "run",
+        "pdf-redaction-mcp"
+      ]
     }
   }
 }
 ```
+
+**With Custom PDF Directory:**
+
+```json
+{
+  "mcpServers": {
+    "pdf-redaction": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/pdf-redaction-mcp",
+        "run",
+        "pdf-redaction-mcp",
+        "--pdf-dir",
+        "/Users/yourname/Documents/PDFs"
+      ]
+    }
+  }
+}
+```
+
+This allows you to use relative paths like `"document.pdf"` instead of full paths.
 
 ### Cursor IDE
 
@@ -358,28 +409,64 @@ Add to your `.cursor/mcp.json`:
   "mcpServers": {
     "pdf-redaction": {
       "command": "uv",
-      "args": ["run", "pdf-redaction-mcp"],
-      "cwd": "/path/to/pdf-redaction-mcp"
+      "args": [
+        "--directory",
+        "/path/to/pdf-redaction-mcp",
+        "run",
+        "pdf-redaction-mcp"
+      ]
     }
   }
 }
 ```
 
-### Remote Server (HTTP/SSE) - For Mobile Apps
+### Cline (VSCode Extension)
 
-Deploy the server remotely for use with Claude Android/iOS apps:
+Add to your Cline MCP settings:
 
-**1. Run the server in HTTP/SSE mode:**
-
-```python
-# Create a file: run_server.py
-from pdf_redaction_mcp.server import mcp
-
-if __name__ == "__main__":
-    mcp.run(transport="sse", port=8000)
+```json
+{
+  "mcpServers": {
+    "pdf-redaction": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/pdf-redaction-mcp",
+        "run",
+        "pdf-redaction-mcp",
+        "--pdf-dir",
+        "${workspaceFolder}/pdfs"
+      ]
+    }
+  }
+}
 ```
 
-**2. Deploy to cloud:**
+### Other MCP Clients
+
+For any MCP client supporting STDIO transport, use:
+
+**Command:** `uv`
+
+**Args:**
+```
+--directory /path/to/pdf-redaction-mcp
+run
+pdf-redaction-mcp
+[optional flags like --pdf-dir]
+```
+
+### Remote Server (HTTP/SSE) - For Mobile Apps
+
+Deploy the server remotely for use with Claude Android/iOS apps or web-based clients:
+
+**1. Run the server in SSE mode:**
+
+```bash
+uv run pdf-redaction-mcp --transport sse --host 0.0.0.0 --port 8000
+```
+
+**2. Deploy to cloud with Docker:**
 
 ```dockerfile
 # Dockerfile
@@ -393,20 +480,20 @@ RUN uv sync
 
 EXPOSE 8000
 
-CMD ["uv", "run", "python", "run_server.py"]
+CMD ["uv", "run", "pdf-redaction-mcp", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 Deploy to Railway, Fly.io, DigitalOcean, AWS, etc.
 
 **3. Configure Claude Mobile App:**
 
-In Claude Android/iOS app settings:
+In Claude Android/iOS app settings, add the remote MCP server:
 
 ```json
 {
   "mcpServers": {
     "pdf-redaction": {
-      "url": "https://your-domain.com/mcp"
+      "url": "https://your-domain.com/sse"
     }
   }
 }
@@ -414,12 +501,110 @@ In Claude Android/iOS app settings:
 
 Now when users **upload PDFs** in the mobile app, Claude will automatically use the `_base64` tools!
 
+### Environment Variables (Optional)
+
+For production deployments, you can use environment variables:
+
+```bash
+# Set PDF directory via environment
+export PDF_DIR=/var/pdfs
+
+# Then reference in your startup script
+uv run pdf-redaction-mcp --pdf-dir "$PDF_DIR"
+```
+
+### Real-World Configuration Examples
+
+**Example 1: Personal Use with Claude Desktop**
+
+Store all PDFs in your Documents folder:
+
+```json
+{
+  "mcpServers": {
+    "pdf-redaction": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/Users/yourname/workspace/pdf-redaction-mcp",
+        "run",
+        "pdf-redaction-mcp",
+        "--pdf-dir",
+        "/Users/yourname/Documents"
+      ]
+    }
+  }
+}
+```
+
+Now you can say: *"Redact emails from report.pdf"* instead of using full paths.
+
+**Example 2: Team Deployment with Shared PDFs**
+
+Deploy remotely with network-mounted PDF storage:
+
+```bash
+# On your server
+uv run pdf-redaction-mcp \
+  --transport sse \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --pdf-dir /mnt/shared-pdfs
+```
+
+Team members configure their clients to use the remote server.
+
+**Example 3: Development Setup**
+
+Use project-relative paths during development:
+
+```json
+{
+  "mcpServers": {
+    "pdf-redaction": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "${workspaceFolder}/pdf-redaction-mcp",
+        "run",
+        "pdf-redaction-mcp",
+        "--pdf-dir",
+        "${workspaceFolder}/test-pdfs"
+      ]
+    }
+  }
+}
+```
+
 ---
 
 ## Workflow Examples
 
 ### Example 1: Redact Personal Information
 
+**Without --pdf-dir flag:**
+```
+User: "Please redact all email addresses from /Users/john/Documents/reports/report.pdf"
+
+LLM uses: redact_text_by_search(
+  pdf_path="/Users/john/Documents/reports/report.pdf",
+  output_path="/Users/john/Documents/reports/report_redacted.pdf",
+  ...
+)
+```
+
+**With --pdf-dir flag (configured as /Users/john/Documents/reports):**
+```
+User: "Please redact all email addresses from report.pdf"
+
+LLM uses: redact_text_by_search(
+  pdf_path="report.pdf",  # Automatically resolved to full path
+  output_path="report_redacted.pdf",
+  ...
+)
+```
+
+**Workflow:**
 ```
 1. User: "Please redact all email addresses and phone numbers from report.pdf"
 
@@ -477,6 +662,90 @@ Now when users **upload PDFs** in the mobile app, Claude will automatically use 
 4. Claude provides download link for redacted PDF
 
 5. User downloads directly to device
+```
+
+---
+
+---
+
+## Troubleshooting
+
+### Claude Desktop Connection Issues
+
+**Problem:** MCP server not connecting in Claude Desktop
+
+**Solutions:**
+1. Verify the path in `claude_desktop_config.json` is correct:
+   ```bash
+   # Check if the directory exists
+   ls -la /path/to/pdf-redaction-mcp
+   ```
+
+2. Test the server manually:
+   ```bash
+   cd /path/to/pdf-redaction-mcp
+   uv run pdf-redaction-mcp --help
+   ```
+
+3. Check Claude Desktop logs:
+   - macOS: `~/Library/Logs/Claude/`
+   - Windows: `%APPDATA%\Claude\logs\`
+   - Linux: `~/.config/Claude/logs/`
+
+### PDF Path Issues
+
+**Problem:** "File not found" errors when using relative paths
+
+**Solution:** Configure `--pdf-dir` flag in your MCP client config:
+```json
+{
+  "mcpServers": {
+    "pdf-redaction": {
+      "command": "uv",
+      "args": [
+        "--directory", "/path/to/pdf-redaction-mcp",
+        "run", "pdf-redaction-mcp",
+        "--pdf-dir", "/your/pdf/directory"
+      ]
+    }
+  }
+}
+```
+
+### Port Already in Use (HTTP/SSE mode)
+
+**Problem:** `Address already in use` error when starting server
+
+**Solution:** 
+1. Use a different port:
+   ```bash
+   uv run pdf-redaction-mcp --transport sse --port 8001
+   ```
+
+2. Or find and kill the process using the port:
+   ```bash
+   # macOS/Linux
+   lsof -ti:8000 | xargs kill -9
+   
+   # Windows
+   netstat -ano | findstr :8000
+   taskkill /PID <PID> /F
+   ```
+
+### UV Not Found
+
+**Problem:** `uv: command not found`
+
+**Solution:** Install UV package manager:
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or use pip
+pip install uv
 ```
 
 ---
