@@ -13,12 +13,31 @@ import re
 import json
 import base64
 import io
+import argparse
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from fastmcp import FastMCP
 
 # Create the MCP server instance
 mcp = FastMCP("PDF Redaction Server")
+
+# Global configuration for PDF base directory
+PDF_BASE_DIR: Optional[Path] = None
+
+
+def resolve_pdf_path(pdf_path: str) -> str:
+    """Resolve PDF path using the configured base directory if path is relative.
+    
+    Args:
+        pdf_path: Path to PDF file (absolute or relative)
+        
+    Returns:
+        Resolved absolute path
+    """
+    path = Path(pdf_path)
+    if PDF_BASE_DIR and not path.is_absolute():
+        return str(PDF_BASE_DIR / path)
+    return pdf_path
 
 
 @mcp.tool()
@@ -38,6 +57,7 @@ def extract_text_from_pdf(
         Extracted text content in the specified format
     """
     try:
+        pdf_path = resolve_pdf_path(pdf_path)
         doc = pymupdf.open(pdf_path)
         
         if page_number is not None:
@@ -116,6 +136,7 @@ def search_text_in_pdf(
         JSON string containing all matches with page numbers and bounding boxes
     """
     try:
+        pdf_path = resolve_pdf_path(pdf_path)
         doc = pymupdf.open(pdf_path)
         matches = []
         
@@ -194,6 +215,8 @@ def redact_text_by_search(
         JSON string with summary of redactions applied
     """
     try:
+        pdf_path = resolve_pdf_path(pdf_path)
+        output_path = resolve_pdf_path(output_path)
         doc = pymupdf.open(pdf_path)
         total_redactions = 0
         redaction_summary = []
@@ -268,6 +291,8 @@ def redact_by_coordinates(
         JSON string with summary of redactions applied
     """
     try:
+        pdf_path = resolve_pdf_path(pdf_path)
+        output_path = resolve_pdf_path(output_path)
         doc = pymupdf.open(pdf_path)
         applied_redactions = []
         
@@ -346,6 +371,8 @@ def redact_images_in_pdf(
         JSON string with summary of image redactions
     """
     try:
+        pdf_path = resolve_pdf_path(pdf_path)
+        output_path = resolve_pdf_path(output_path)
         doc = pymupdf.open(pdf_path)
         total_images_redacted = 0
         summary = []
@@ -419,7 +446,10 @@ def verify_redactions(
         JSON string with verification results
     """
     try:
+        original_pdf = resolve_pdf_path(original_pdf)
+        redacted_pdf = resolve_pdf_path(redacted_pdf)
         orig_doc = pymupdf.open(original_pdf)
+        redact_doc = pymupdf.open(redacted_pdf)
         redact_doc = pymupdf.open(redacted_pdf)
         
         verification = {
@@ -498,6 +528,7 @@ def get_pdf_info(pdf_path: str) -> str:
         JSON string with PDF metadata and structure information
     """
     try:
+        pdf_path = resolve_pdf_path(pdf_path)
         doc = pymupdf.open(pdf_path)
         
         info = {
@@ -1090,7 +1121,71 @@ def get_pdf_info_base64(pdf_data: str) -> str:
 
 def main():
     """Main entry point for the MCP server."""
-    mcp.run()
+    parser = argparse.ArgumentParser(
+        description="PDF Redaction MCP Server - Provides PDF redaction tools via Model Context Protocol",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Transport Modes:
+  stdio       Standard I/O (default) - for Claude Desktop, Cursor, etc.
+  http        HTTP transport - for web-based clients
+  sse         Server-Sent Events - for mobile apps and remote clients
+
+Examples:
+  %(prog)s                                    # Run in STDIO mode (default)
+  %(prog)s --transport sse --port 8000        # Run as SSE server on port 8000
+  %(prog)s --transport http --host 0.0.0.0    # Run as HTTP server on all interfaces
+  %(prog)s --pdf-dir /path/to/pdfs            # Set base directory for PDF files
+        """
+    )
+    
+    parser.add_argument(
+        "--transport",
+        type=str,
+        choices=["stdio", "http", "sse"],
+        default="stdio",
+        help="Transport mode for the MCP server (default: stdio)"
+    )
+    
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Host to bind to for HTTP/SSE mode (default: 127.0.0.1)"
+    )
+    
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to listen on for HTTP/SSE mode (default: 8000)"
+    )
+    
+    parser.add_argument(
+        "--pdf-dir",
+        type=str,
+        default=None,
+        help="Base directory for PDF files. Relative paths in tools will be resolved against this directory."
+    )
+    
+    args = parser.parse_args()
+    
+    # Set global PDF base directory if provided
+    global PDF_BASE_DIR
+    if args.pdf_dir:
+        PDF_BASE_DIR = Path(args.pdf_dir).resolve()
+        if not PDF_BASE_DIR.exists():
+            print(f"Warning: PDF base directory does not exist: {PDF_BASE_DIR}")
+        else:
+            print(f"PDF base directory: {PDF_BASE_DIR}")
+    
+    # Run server with appropriate transport
+    if args.transport == "stdio":
+        print("Starting PDF Redaction MCP Server in STDIO mode...")
+        mcp.run()
+    elif args.transport in ("http", "sse"):
+        print(f"Starting PDF Redaction MCP Server in {args.transport.upper()} mode...")
+        print(f"Listening on {args.host}:{args.port}")
+        mcp.run(transport=args.transport, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

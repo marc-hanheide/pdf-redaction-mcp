@@ -25,6 +25,13 @@ Every feature has **two implementations**: file-based and base64-encoded version
 
 All tools register to a single `mcp = FastMCP("PDF Redaction Server")` instance at module level ([server.py](src/pdf_redaction_mcp/server.py#L19)). Use `@mcp.tool()` decorator for all new tools.
 
+### PDF Path Resolution
+
+File-based tools use `resolve_pdf_path()` to handle relative paths:
+- If `--pdf-dir` is set, relative paths are resolved against it
+- Absolute paths are used as-is
+- Global `PDF_BASE_DIR` variable stores the configured base directory
+
 ## Development Workflow
 
 ### Environment Setup
@@ -36,11 +43,18 @@ uv sync
 # Run tests
 uv run pytest
 
-# Run server locally (STDIO mode)
+# Run server locally (STDIO mode - default)
 uv run pdf-redaction-mcp
 
-# Run server for remote access (HTTP/SSE mode)
-python run_server.py --port 8000 --host 0.0.0.0
+# Run server with different transports
+uv run pdf-redaction-mcp --transport sse --port 8000
+uv run pdf-redaction-mcp --transport http --host 0.0.0.0 --port 8080
+
+# Run with custom PDF base directory
+uv run pdf-redaction-mcp --pdf-dir /path/to/pdfs
+
+# Combine options
+uv run pdf-redaction-mcp --transport sse --port 8000 --pdf-dir ./documents
 ```
 
 ### Testing Pattern
@@ -52,7 +66,8 @@ Tests in [tests/test_server.py](tests/test_server.py):
 - No real PDF fixtures currently - tests focus on error handling and structure
 
 ### Adding New Tools
-
+pdf_path = resolve_pdf_path(pdf_path)  # Always resolve paths first
+           
 1. **Create file-based version first**:
    ```python
    @mcp.tool()
@@ -121,10 +136,24 @@ Bounding boxes use pymupdf's format: `[x0, y0, x1, y1]` where:
 
 ## Transport Modes
 
-**STDIO** (default): `mcp.run()` - for desktop clients
-**HTTP/SSE**: `mcp.run(transport='sse')` - for mobile/web clients
+The server supports three transport modes via command line flags:
 
-Entry point [server.py main()](src/pdf_redaction_mcp/server.py#L1090) defaults to STDIO.
+**STDIO** (default): For Claude Desktop, Cursor, and desktop MCP clients
+```bash
+uv run pdf-redaction-mcp  # or --transport stdio
+```
+
+**SSE** (Server-Sent Events): For mobile apps and remote clients
+```bash
+uv run pdf-redaction-mcp --transport sse --host 0.0.0.0 --port 8000
+```
+
+**HTTP**: For web-based clients
+```bash
+uv run pdf-redaction-mcp --transport http --port 8080
+```
+
+Entry point [server.py main()](src/pdf_redaction_mcp/server.py) uses argparse for configuration.
 
 ## Common Operations
 
