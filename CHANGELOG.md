@@ -1,0 +1,72 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.2.0] - 2025-01-13
+
+### Added
+- **Base64 tools** for working with uploaded PDFs (mobile/web apps)
+  - `extract_text_from_pdf_base64`
+  - `search_text_in_pdf_base64`
+  - `redact_text_by_search_base64`
+  - `redact_by_coordinates_base64`
+  - `redact_images_in_pdf_base64`
+  - `verify_redactions_base64`
+  - `get_pdf_info_base64`
+- Support for in-memory PDF processing via base64 encoding
+- Remote server deployment guide for HTTP/SSE transport
+- Mobile app (Android/iOS) integration examples
+- Documentation for when to use file-based vs base64 tools
+
+### Changed
+- Server now provides 14 tools total (7 file-based + 7 base64)
+- Updated README with comprehensive base64 tool documentation
+- Enhanced deployment section with cloud deployment examples
+
+### Technical
+- Added base64 and io module imports
+- All base64 tools process PDFs entirely in memory
+- Output PDFs returned as base64-encoded strings in JSON
+- No filesystem access required for base64 tools
+
+## [0.1.0] - 2025-01-13
+
+### Added
+- Initial release of PDF Redaction MCP Server
+- FastMCP2-based server implementation
+- Seven core tools for PDF manipulation:
+  - `extract_text_from_pdf` - Extract text in multiple formats
+  - `search_text_in_pdf` - Search with regex support
+  - `redact_text_by_search` - Automatic text redaction
+  - `redact_by_coordinates` - Precise area redaction
+  - `redact_images_in_pdf` - Image removal
+  - `verify_redactions` - Redaction verification
+  - `get_pdf_info` - PDF metadata extraction
+- Comprehensive error handling for all operations
+- Support for STDIO and HTTP/SSE transports
+- UV project structure with dependency management
+- Complete test suite with pytest
+- Documentation:
+  - Comprehensive README with examples
+  - Quick Start guide
+  - Example usage scripts
+- British English throughout codebase and documentation
+
+### Features
+- Search and redact using regular expressions
+- Customisable redaction colours and overlay text
+- Batch redaction across multiple pages
+- Verification tools to confirm redactions
+- Support for encrypted PDFs
+- Multiple text extraction formats (text, JSON, blocks)
+
+### Technical
+- Built with FastMCP 2.x
+- Uses pymupdf 1.24+ for PDF operations
+- Python 3.10+ compatibility
+- UV package manager integration
+- Comprehensive type hints
+- JSON-based error reporting
