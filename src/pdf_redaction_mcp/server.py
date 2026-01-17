@@ -56,7 +56,7 @@ def resolve_pdf_path(pdf_path: str) -> str:
 def load_pdf(pdf_path: str, document_id: Optional[str] = None) -> str:
     """Load a PDF file into memory for session-based operations.
     
-    All other PDF tools require a document to be loaded first using this tool.
+    All other PDF tools in the MCP server require a document to be loaded first using this tool.
     The document remains in memory until saved or the session ends.
     
     Args:
