@@ -2,9 +2,8 @@
 """Run the PDF Redaction MCP Server in HTTP/SSE mode for remote deployment.
 
 This script starts the server in HTTP/SSE mode, suitable for:
-- Claude Android/iOS apps
-- Web-based clients
 - Remote MCP connections
+- Web-based clients
 
 Usage:
     python run_server.py [--port PORT] [--host HOST]
@@ -43,15 +42,12 @@ def main():
     print(f"URL: http://{args.host}:{args.port}/mcp")
     print()
     print("Server features:")
-    print("  • 7 file-based tools (for local files)")
-    print("  • 7 base64 tools (for uploaded PDFs)")
-    print("  • 14 tools total")
+    print("  • 7 tools for working with local PDF files")
     print()
     print("Compatible with:")
-    print("  • Claude Android app")
-    print("  • Claude iOS app")
-    print("  • Claude web app")
-    print("  • Any MCP client with HTTP/SSE transport")
+    print("  • Claude Desktop")
+    print("  • Cursor IDE")
+    print("  • Any MCP client with STDIO/HTTP/SSE transport")
     print()
     print("Press Ctrl+C to stop the server")
     print("-" * 60)

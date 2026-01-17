@@ -2,7 +2,7 @@
 
 ## Summary
 
-A production-ready Model Context Protocol (MCP) server for comprehensive PDF redaction operations, built with FastMCP2 and pymupdf. Supports both file-based (local) and base64-encoded (uploaded) PDFs for seamless integration with desktop and mobile applications.
+A production-ready Model Context Protocol (MCP) server for comprehensive PDF redaction operations, built with FastMCP2 and pymupdf. Supports local PDF files for seamless integration with desktop applications.
 
 ## Project Information
 
@@ -13,7 +13,7 @@ A production-ready Model Context Protocol (MCP) server for comprehensive PDF red
 - **PDF Library**: pymupdf 1.24+
 - **Package Manager**: UV
 - **License**: MIT
-- **Total Tools**: 14 (7 file-based + 7 base64)
+- **Total Tools**: 7 (for local PDF files)
 
 ## Features
 
@@ -23,40 +23,40 @@ A production-ready Model Context Protocol (MCP) server for comprehensive PDF red
    - Multiple formats (plain text, JSON, structured blocks)
    - Page-specific or full document extraction
    - Preserves text structure and layout information
-   - Works with files or base64-encoded PDFs
+   - Works with local PDF files
 
 2. **Text Search**
    - Exact string matching
    - Regular expression support
    - Case-sensitive/insensitive options
    - Returns bounding box coordinates
-   - Works with files or base64-encoded PDFs
+   - Works with local PDF files
 
 3. **Text Redaction**
    - Search-based automatic redaction
    - Coordinate-based precise redaction
    - Customisable colours and overlay text
    - Batch processing across multiple pages
-   - Works with files or base64-encoded PDFs
+   - Works with local PDF files
 
 4. **Image Redaction**
    - Complete image removal
    - Page-specific or document-wide
    - Customisable replacement text
-   - Works with files or base64-encoded PDFs
+   - Works with local PDF files
 
 5. **Verification**
    - Confirm redactions were applied
    - Compare original vs redacted
    - Search for remaining sensitive data
    - Word count analysis
-   - Works with files or base64-encoded PDFs
+   - Works with local PDF files
 
 6. **PDF Information**
    - Metadata extraction
    - Page structure analysis
    - Image and link counting
-   - Works with files or base64-encoded PDFs
+   - Works with local PDF files
 
 ### Deployment Modes
 
@@ -65,16 +65,14 @@ A production-ready Model Context Protocol (MCP) server for comprehensive PDF red
 - Direct filesystem access
 - Traditional MCP integration
 
-**Remote (HTTP/SSE) - Mobile Apps:**
-- Base64 tools for uploaded PDFs
-- In-memory processing
-- No filesystem required
-- Perfect for cloud deployment
+**Remote (HTTP/SSE) - Remote Servers:**
+- Same file-based tools accessible remotely
+- Network-based access to local PDFs
+- Cloud deployment support
 
 ### Technical Features
 
-- **Dual Tool Sets**: File-based and base64 versions of every tool
-- **In-Memory Processing**: Base64 tools work entirely in memory
+- **File-Based Tools**: Works with local PDF files
 - **Error Handling**: Comprehensive JSON-based error reporting
 - **Type Safety**: Full type hints throughout
 - **Multiple Transports**: STDIO (default) and HTTP/SSE
@@ -104,11 +102,7 @@ pdf-redaction-mcp/
 
 ## Available Tools
 
-The server provides **14 tools in total**:
-- **7 file-based tools** - For local PDFs (paths as strings)
-- **7 base64 tools** - For uploaded PDFs (base64-encoded)
-
-### File-Based Tools (Local Files)
+The server provides **7 tools** for working with local PDF files:
 
 ### 1. extract_text_from_pdf
 Extract text from PDF files in multiple formats.
@@ -171,35 +165,6 @@ Extract PDF metadata and structure.
 - Planning redaction strategy
 - File analysis
 - Debugging
-
----
-
-### Base64 Tools (Uploaded PDFs)
-
-All base64 tools mirror their file-based counterparts but work with base64-encoded PDFs instead of file paths. They process PDFs entirely in memory - perfect for mobile apps and remote servers.
-
-**Complete Base64 Tool Set:**
-1. `extract_text_from_pdf_base64` - Extract text from uploaded PDF
-2. `search_text_in_pdf_base64` - Search in uploaded PDF
-3. `redact_text_by_search_base64` - Redact text, returns base64 PDF
-4. `redact_by_coordinates_base64` - Redact areas, returns base64 PDF
-5. `redact_images_in_pdf_base64` - Redact images, returns base64 PDF
-6. `verify_redactions_base64` - Verify base64 PDFs
-7. `get_pdf_info_base64` - Get info from uploaded PDF
-
-**When to use base64 tools:**
-- ✓ Claude Android/iOS apps (uploaded PDFs)
-- ✓ Remote server deployment (HTTP/SSE)
-- ✓ No filesystem access
-- ✓ In-memory processing required
-- ✓ Cloud deployment
-
-**Key differences from file-based:**
-- **Input**: Base64 string instead of file path
-- **Output**: Base64 PDF in JSON (for redaction tools)
-- **Processing**: Entirely in memory
-- **Storage**: No disk I/O required
-- **Transport**: Optimised for HTTP/SSE
 
 ---
 

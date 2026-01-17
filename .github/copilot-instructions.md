@@ -2,26 +2,9 @@
 
 ## Project Overview
 
-A Model Context Protocol (MCP) server for PDF redaction using **FastMCP 2.x** and **pymupdf**. This server provides 14 tools (7 file-based + 7 base64-encoded) for extracting, searching, and redacting text/images in PDFs. Version 0.2.0.
+A Model Context Protocol (MCP) server for PDF redaction using **FastMCP 2.x** and **pymupdf**. This server provides 7 tools for extracting, searching, and redacting text/images in PDFs with local files. Version 0.2.0.
 
 ## Architecture
-
-### Dual Tool Pattern (Critical)
-
-Every feature has **two implementations**: file-based and base64-encoded versions.
-
-**File-based tools**: For local PDFs (Claude Desktop/Cursor via STDIO)
-- Function names: `extract_text_from_pdf`, `search_text_in_pdf`, etc.
-- Parameters use `pdf_path: str` and `output_path: str`
-- Direct filesystem I/O
-
-**Base64 tools**: For uploaded PDFs (mobile/web apps via HTTP/SSE)
-- Function names: append `_base64` suffix (e.g., `extract_text_from_pdf_base64`)
-- Parameters use `pdf_data: str` (base64-encoded) and return base64-encoded results
-- In-memory processing: `doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")`
-- Save to memory: `doc.save(output_stream)`
-
-### Single Server Instance
 
 All tools register to a single `mcp = FastMCP("PDF Redaction Server")` instance at module level ([server.py](src/pdf_redaction_mcp/server.py#L19)). Use `@mcp.tool()` decorator for all new tools.
 
@@ -66,14 +49,16 @@ Tests in [tests/test_server.py](tests/test_server.py):
 - No real PDF fixtures currently - tests focus on error handling and structure
 
 ### Adding New Tools
-pdf_path = resolve_pdf_path(pdf_path)  # Always resolve paths first
-           
-1. **Create file-based version first**:
+
+All tools work with local PDF files only.
+
+1. **Create the tool**:
    ```python
    @mcp.tool()
    def new_feature(pdf_path: str, ...) -> str:
        """Docstring explaining the tool."""
        try:
+           pdf_path = resolve_pdf_path(pdf_path)  # Always resolve paths first
            doc = pymupdf.open(pdf_path)
            # ... implementation
            doc.close()
@@ -82,16 +67,9 @@ pdf_path = resolve_pdf_path(pdf_path)  # Always resolve paths first
            return json.dumps({"error": str(e)})
    ```
 
-2. **Create base64 version** (duplicate with modifications):
-   - Append `_base64` to function name
-   - Replace `pdf_path: str` with `pdf_data: str`
-   - Decode base64: `pdf_bytes = base64.b64decode(pdf_data)`
-   - Open in memory: `doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")`
-   - For outputs, encode to base64: `base64.b64encode(output_stream.getvalue()).decode('utf-8')`
+2. **Always return JSON strings** for structured data or errors
 
-3. **Always return JSON strings** for structured data or errors
-
-4. **Add to both sections** of README.md (file-based and base64 tool sections)
+3. **Add to README.md** in the Available Tools section
 
 ## Project Conventions
 
@@ -123,10 +101,9 @@ Bounding boxes use pymupdf's format: `[x0, y0, x1, y1]` where:
 
 ## Key Files
 
-- [src/pdf_redaction_mcp/server.py](src/pdf_redaction_mcp/server.py): Single 1098-line file with all tools
+- [src/pdf_redaction_mcp/server.py](src/pdf_redaction_mcp/server.py): Single file with all tools
 - [pyproject.toml](pyproject.toml): UV-based dependency management, entry point: `pdf-redaction-mcp` script
 - [examples/example_usage.py](examples/example_usage.py): Programmatic usage examples
-- [run_server.py](run_server.py): HTTP/SSE server for remote deployment
 
 ## Dependencies
 
@@ -136,14 +113,14 @@ Bounding boxes use pymupdf's format: `[x0, y0, x1, y1]` where:
 
 ## Transport Modes
 
-The server supports three transport modes via command line flags:
+The server supports multiple transport modes via command line flags, but all modes work with local PDF files only:
 
 **STDIO** (default): For Claude Desktop, Cursor, and desktop MCP clients
 ```bash
 uv run pdf-redaction-mcp  # or --transport stdio
 ```
 
-**SSE** (Server-Sent Events): For mobile apps and remote clients
+**SSE** (Server-Sent Events): For remote deployments
 ```bash
 uv run pdf-redaction-mcp --transport sse --host 0.0.0.0 --port 8000
 ```

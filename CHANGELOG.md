@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+- **Base64 tools** - Removed all base64-encoded PDF tools as this MCP now only works with local files
+  - Removed `extract_text_from_pdf_base64`
+  - Removed `search_text_in_pdf_base64`
+  - Removed `redact_text_by_search_base64`
+  - Removed `redact_by_coordinates_base64`
+  - Removed `redact_images_in_pdf_base64`
+  - Removed `verify_redactions_base64`
+  - Removed `get_pdf_info_base64`
+- Removed `base64` and `io` module imports (no longer needed)
+- Removed mobile app deployment documentation and examples
+- Removed `examples/example_base64_usage.py`
+
+### Changed
+- Server now provides 7 tools (file-based only for local PDFs)
+- Updated all documentation to reflect local-file-only usage
+- Simplified architecture - single tool implementation pattern
+
 ## [0.2.0] - 2025-01-13
 
 ### Added

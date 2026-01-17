@@ -76,26 +76,9 @@ uv run pdf-redaction-mcp --transport sse --port 8000 --pdf-dir ~/Documents/pdfs
 
 ### Available Tools
 
-The server provides **two sets of tools**:
-1. **File-based tools** - For local files on disk (original tools)
-2. **Base64 tools** - For uploaded PDFs in mobile/web apps (tools ending in `_base64`)
-
-### When to Use Which?
-
-**Use file-based tools when:**
-- Working with PDFs already saved on your computer
-- Using Claude Desktop with local files
-- Running the server locally via STDIO
-
-**Use base64 tools when:**
-- Working with uploaded PDFs (mobile/web apps)
-- Server deployed remotely (HTTP/SSE transport)
-- No filesystem access available
-- Processing PDFs in memory
+All tools work with local PDF files on disk.
 
 ---
-
-### File-Based Tools (Local Files)
 
 #### 1. `extract_text_from_pdf`
 
@@ -249,100 +232,6 @@ get_pdf_info(pdf_path="/path/to/document.pdf")
 
 ---
 
-### Base64 Tools (Uploaded PDFs)
-
-All base64 tools work identically to their file-based counterparts, but accept/return base64-encoded PDFs instead of file paths. Perfect for mobile apps and remote servers.
-
-#### 1. `extract_text_from_pdf_base64`
-
-Extract text from an uploaded PDF.
-
-**Parameters:**
-- `pdf_data` (str): Base64-encoded PDF
-- `page_number` (int, optional): Specific page to extract
-- `format` (str): Output format - "text", "json", or "blocks"
-
-**Returns:** Extracted text (same as file-based version)
-
-#### 2. `search_text_in_pdf_base64`
-
-Search for text in an uploaded PDF.
-
-**Parameters:**
-- `pdf_data` (str): Base64-encoded PDF
-- `search_string` (str): Text or regex pattern
-- `case_sensitive` (bool): Case sensitivity
-- `use_regex` (bool): Use regex
-- `page_number` (int, optional): Specific page
-
-**Returns:** JSON with matches and bounding boxes
-
-#### 3. `redact_text_by_search_base64`
-
-Redact text in an uploaded PDF.
-
-**Parameters:**
-- `pdf_data` (str): Base64-encoded PDF
-- `search_strings` (List[str]): Strings to redact
-- `case_sensitive` (bool): Case sensitivity
-- `fill_color` (Tuple): RGB colour
-- `overlay_text` (str): Overlay text
-- `text_color` (Tuple): Text colour
-
-**Returns:** JSON with `redacted_pdf` (base64) and summary
-
-**Example workflow:**
-```
-User uploads PDF → Claude gets base64 → Calls redact_text_by_search_base64
-→ Returns base64 redacted PDF → User downloads
-```
-
-#### 4. `redact_by_coordinates_base64`
-
-Redact specific areas in an uploaded PDF.
-
-**Parameters:**
-- `pdf_data` (str): Base64-encoded PDF
-- `redactions` (List[Dict]): Redaction areas
-- `fill_color` (Tuple): RGB colour
-- `overlay_text` (str): Overlay text
-
-**Returns:** JSON with `redacted_pdf` (base64) and summary
-
-#### 5. `redact_images_in_pdf_base64`
-
-Remove images from an uploaded PDF.
-
-**Parameters:**
-- `pdf_data` (str): Base64-encoded PDF
-- `page_numbers` (List[int], optional): Pages to process
-- `fill_color` (Tuple): RGB colour
-- `overlay_text` (str): Overlay text
-
-**Returns:** JSON with `redacted_pdf` (base64) and summary
-
-#### 6. `verify_redactions_base64`
-
-Verify redactions in uploaded PDFs.
-
-**Parameters:**
-- `original_pdf_data` (str): Base64-encoded original PDF
-- `redacted_pdf_data` (str): Base64-encoded redacted PDF
-- `search_strings` (List[str], optional): Strings to check
-
-**Returns:** JSON with verification results
-
-#### 7. `get_pdf_info_base64`
-
-Get metadata from an uploaded PDF.
-
-**Parameters:**
-- `pdf_data` (str): Base64-encoded PDF
-
-**Returns:** JSON with PDF metadata and structure
-
----
-
 ## Configuration
 
 This section covers how to configure the PDF Redaction MCP Server with various MCP clients.
@@ -352,7 +241,6 @@ This section covers how to configure the PDF Redaction MCP Server with various M
 - [Cursor IDE](#cursor-ide) - For developers using Cursor
 - [Cline (VSCode)](#cline-vscode-extension) - VSCode MCP extension
 - [Other MCP Clients](#other-mcp-clients) - Generic STDIO configuration
-- [Remote/Mobile Setup](#remote-server-httpsse---for-mobile-apps) - For mobile apps and web clients
 
 ---
 
@@ -455,51 +343,6 @@ run
 pdf-redaction-mcp
 [optional flags like --pdf-dir]
 ```
-
-### Remote Server (HTTP/SSE) - For Mobile Apps
-
-Deploy the server remotely for use with Claude Android/iOS apps or web-based clients:
-
-**1. Run the server in SSE mode:**
-
-```bash
-uv run pdf-redaction-mcp --transport sse --host 0.0.0.0 --port 8000
-```
-
-**2. Deploy to cloud with Docker:**
-
-```dockerfile
-# Dockerfile
-FROM python:3.10-slim
-
-WORKDIR /app
-COPY . .
-
-RUN pip install uv
-RUN uv sync
-
-EXPOSE 8000
-
-CMD ["uv", "run", "pdf-redaction-mcp", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-Deploy to Railway, Fly.io, DigitalOcean, AWS, etc.
-
-**3. Configure Claude Mobile App:**
-
-In Claude Android/iOS app settings, add the remote MCP server:
-
-```json
-{
-  "mcpServers": {
-    "pdf-redaction": {
-      "url": "https://your-domain.com/sse"
-    }
-  }
-}
-```
-
-Now when users **upload PDFs** in the mobile app, Claude will automatically use the `_base64` tools!
 
 ### Environment Variables (Optional)
 
@@ -645,26 +488,7 @@ LLM uses: redact_text_by_search(
 4. LLM verifies using get_pdf_info that images are gone
 ```
 
-### Example 4: Mobile App with Uploaded PDF
 
-```
-1. User uploads confidential.pdf in Claude Android app
-
-2. User: "Redact all email addresses and save the result"
-
-3. LLM workflow:
-   - Receives PDF as base64 automatically
-   - search_text_in_pdf_base64(pdf_data, email_regex, use_regex=True)
-   - redact_text_by_search_base64(pdf_data, found_emails)
-   - verify_redactions_base64(original, redacted, found_emails)
-   - Returns: {redacted_pdf: "base64...", total_redactions: 5}
-
-4. Claude provides download link for redacted PDF
-
-5. User downloads directly to device
-```
-
----
 
 ---
 
