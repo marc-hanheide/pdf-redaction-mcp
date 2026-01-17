@@ -203,7 +203,6 @@ def redact_text_by_search(
     pdf_path: str,
     output_path: str,
     search_strings: List[str],
-    case_sensitive: bool = False,
     fill_color: Tuple[float, float, float] = (0, 0, 0),
     overlay_text: str = "",
     text_color: Tuple[float, float, float] = (1, 1, 1)
@@ -214,7 +213,6 @@ def redact_text_by_search(
         pdf_path: Path to the input PDF file
         output_path: Path where the redacted PDF will be saved
         search_strings: List of strings to search for and redact
-        case_sensitive: Whether search should be case sensitive
         fill_color: RGB color for redaction box (0-1 range). Default is black (0,0,0)
         overlay_text: Optional text to display over redacted area, use this to explain what has been redacted here
         text_color: RGB color for overlay text (0-1 range). Default is white (1,1,1)
