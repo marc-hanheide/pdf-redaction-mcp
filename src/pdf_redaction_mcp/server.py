@@ -32,6 +32,10 @@ mcp = FastMCP("PDF Redaction Server")
 # Global configuration for PDF base directory
 PDF_BASE_DIR: Optional[Path] = None
 
+# In-memory document store for session-based operations
+# Maps document_id -> pymupdf.Document
+DOCUMENT_STORE: Dict[str, pymupdf.Document] = {}
+
 
 def resolve_pdf_path(pdf_path: str) -> str:
     """Resolve PDF path using the configured base directory if path is relative.
@@ -49,15 +53,167 @@ def resolve_pdf_path(pdf_path: str) -> str:
 
 
 @mcp.tool()
+def load_pdf(pdf_path: str, document_id: Optional[str] = None) -> str:
+    """Load a PDF file into memory for session-based operations.
+    
+    All other PDF tools require a document to be loaded first using this tool.
+    The document remains in memory until saved or the session ends.
+    
+    Args:
+        pdf_path: Path to the PDF file to load
+        document_id: Optional identifier for this document. If None, uses the filename
+    
+    Returns:
+        JSON string with document_id and basic info about the loaded PDF
+    """
+    try:
+        pdf_path = resolve_pdf_path(pdf_path)
+        doc = pymupdf.open(pdf_path)
+        
+        # Generate document_id if not provided
+        if document_id is None:
+            document_id = Path(pdf_path).stem
+        
+        # Close existing document with same ID if it exists
+        if document_id in DOCUMENT_STORE:
+            DOCUMENT_STORE[document_id].close()
+        
+        DOCUMENT_STORE[document_id] = doc
+        
+        result = {
+            "document_id": document_id,
+            "source_path": pdf_path,
+            "pages": len(doc),
+            "is_encrypted": doc.is_encrypted,
+            "status": "loaded"
+        }
+        
+        return json.dumps(result, indent=2)
+    
+    except Exception as e:
+        return json.dumps({
+            "error": str(e),
+            "document_id": document_id
+        })
+
+
+@mcp.tool()
+def save_pdf(document_id: str, output_path: str) -> str:
+    """Save an in-memory PDF document to disk.
+    
+    The document remains loaded in memory after saving and can continue to be modified.
+    
+    Args:
+        document_id: Identifier of the loaded document
+        output_path: Path where the PDF will be saved
+    
+    Returns:
+        JSON string with save confirmation
+    """
+    try:
+        if document_id not in DOCUMENT_STORE:
+            return json.dumps({
+                "error": f"Document '{document_id}' not found. Use load_pdf first.",
+                "available_documents": list(DOCUMENT_STORE.keys())
+            })
+        
+        output_path = resolve_pdf_path(output_path)
+        doc = DOCUMENT_STORE[document_id]
+        doc.save(output_path)
+        
+        result = {
+            "document_id": document_id,
+            "output_path": output_path,
+            "pages": len(doc),
+            "status": "saved"
+        }
+        
+        return json.dumps(result, indent=2)
+    
+    except Exception as e:
+        return json.dumps({
+            "error": str(e),
+            "document_id": document_id
+        })
+
+
+@mcp.tool()
+def close_pdf(document_id: str) -> str:
+    """Close and remove an in-memory PDF document.
+    
+    Use this to free up memory when you're done with a document.
+    Any unsaved changes will be lost.
+    
+    Args:
+        document_id: Identifier of the loaded document
+    
+    Returns:
+        JSON string with close confirmation
+    """
+    try:
+        if document_id not in DOCUMENT_STORE:
+            return json.dumps({
+                "error": f"Document '{document_id}' not found.",
+                "available_documents": list(DOCUMENT_STORE.keys())
+            })
+        
+        DOCUMENT_STORE[document_id].close()
+        del DOCUMENT_STORE[document_id]
+        
+        result = {
+            "document_id": document_id,
+            "status": "closed"
+        }
+        
+        return json.dumps(result, indent=2)
+    
+    except Exception as e:
+        return json.dumps({
+            "error": str(e),
+            "document_id": document_id
+        })
+
+
+@mcp.tool()
+def list_loaded_pdfs() -> str:
+    """List all currently loaded PDF documents in memory.
+    
+    Returns:
+        JSON string with information about all loaded documents
+    """
+    try:
+        documents = []
+        for doc_id, doc in DOCUMENT_STORE.items():
+            documents.append({
+                "document_id": doc_id,
+                "pages": len(doc),
+                "is_encrypted": doc.is_encrypted,
+                "metadata": doc.metadata
+            })
+        
+        result = {
+            "total_documents": len(documents),
+            "documents": documents
+        }
+        
+        return json.dumps(result, indent=2)
+    
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
 def extract_text_from_pdf(
-    pdf_path: str,
+    document_id: str,
     page_number: Optional[int] = None,
     format: str = "text"
 ) -> str:
-    """Extract text from a PDF file for LLM consumption.
+    """Extract text from a loaded PDF document.
+    
+    The document must be loaded first using load_pdf.
     
     Args:
-        pdf_path: Path to the PDF file
+        document_id: Identifier of the loaded document
         page_number: Specific page number to extract (0-indexed). If None, extracts all pages
         format: Output format - "text" (plain text), "json" (structured), or "blocks" (text blocks)
     
@@ -65,12 +221,16 @@ def extract_text_from_pdf(
         Extracted text content in the specified format
     """
     try:
-        pdf_path = resolve_pdf_path(pdf_path)
-        doc = pymupdf.open(pdf_path)
+        if document_id not in DOCUMENT_STORE:
+            return json.dumps({
+                "error": f"Document '{document_id}' not found. Use load_pdf first.",
+                "available_documents": list(DOCUMENT_STORE.keys())
+            })
+        
+        doc = DOCUMENT_STORE[document_id]
         
         if page_number is not None:
             if page_number < 0 or page_number >= len(doc):
-                doc.close()
                 return json.dumps({"error": f"Invalid page number. PDF has {len(doc)} pages"})
             pages_to_process = [page_number]
         else:
@@ -90,7 +250,6 @@ def extract_text_from_pdf(
                     "word_count": len(page.get_text("text").split())
                 })
             
-            doc.close()
             return json.dumps(result, indent=2)
         
         elif format == "blocks":
@@ -107,7 +266,6 @@ def extract_text_from_pdf(
                     "blocks": blocks
                 })
             
-            doc.close()
             return json.dumps(result, indent=2)
         
         else:  # plain text
@@ -116,7 +274,6 @@ def extract_text_from_pdf(
                 page = doc[page_num]
                 text_parts.append(f"=== Page {page_num + 1} ===\n{page.get_text('text')}\n")
             
-            doc.close()
             return "\n".join(text_parts)
     
     except Exception as e:
@@ -125,16 +282,18 @@ def extract_text_from_pdf(
 
 @mcp.tool()
 def search_text_in_pdf(
-    pdf_path: str,
+    document_id: str,
     search_string: str,
     case_sensitive: bool = False,
     use_regex: bool = False,
     page_number: Optional[int] = None
 ) -> str:
-    """Search for text in a PDF and return all occurrences with their locations.
+    """Search for text in a loaded PDF document and return all occurrences with their locations.
+    
+    The document must be loaded first using load_pdf.
     
     Args:
-        pdf_path: Path to the PDF file
+        document_id: Identifier of the loaded document
         search_string: Text or regex pattern to search for
         case_sensitive: Whether search should be case sensitive
         use_regex: Whether to treat search_string as a regex pattern
@@ -144,8 +303,13 @@ def search_text_in_pdf(
         JSON string containing all matches with page numbers and bounding boxes
     """
     try:
-        pdf_path = resolve_pdf_path(pdf_path)
-        doc = pymupdf.open(pdf_path)
+        if document_id not in DOCUMENT_STORE:
+            return json.dumps({
+                "error": f"Document '{document_id}' not found. Use load_pdf first.",
+                "available_documents": list(DOCUMENT_STORE.keys())
+            })
+        
+        doc = DOCUMENT_STORE[document_id]
         matches = []
         
         pages_to_search = [page_number] if page_number is not None else range(len(doc))
@@ -184,8 +348,6 @@ def search_text_in_pdf(
                         "match_type": "exact"
                     })
         
-        doc.close()
-        
         result = {
             "search_string": search_string,
             "total_matches": len(matches),
@@ -200,18 +362,19 @@ def search_text_in_pdf(
 
 @mcp.tool()
 def redact_text_by_search(
-    pdf_path: str,
-    output_path: str,
+    document_id: str,
     search_strings: List[str],
     fill_color: Tuple[float, float, float] = (0, 0, 0),
     overlay_text: str = "",
     text_color: Tuple[float, float, float] = (1, 1, 1)
 ) -> str:
-    """Redact all occurrences of specified text strings in a PDF.
+    """Redact all occurrences of specified text strings in a loaded PDF document.
+    
+    The document must be loaded first using load_pdf. Modifications are made in-memory.
+    Use save_pdf to write the changes to disk.
     
     Args:
-        pdf_path: Path to the input PDF file
-        output_path: Path where the redacted PDF will be saved
+        document_id: Identifier of the loaded document
         search_strings: List of strings to search for and redact
         fill_color: RGB color for redaction box (0-1 range). Default is black (0,0,0)
         overlay_text: Optional text to display over redacted area, use this to explain what has been redacted here
@@ -221,9 +384,13 @@ def redact_text_by_search(
         JSON string with summary of redactions applied
     """
     try:
-        pdf_path = resolve_pdf_path(pdf_path)
-        output_path = resolve_pdf_path(output_path)
-        doc = pymupdf.open(pdf_path)
+        if document_id not in DOCUMENT_STORE:
+            return json.dumps({
+                "error": f"Document '{document_id}' not found. Use load_pdf first.",
+                "available_documents": list(DOCUMENT_STORE.keys())
+            })
+        
+        doc = DOCUMENT_STORE[document_id]
         total_redactions = 0
         redaction_summary = []
         
@@ -254,13 +421,8 @@ def redact_text_by_search(
                     "redactions": page_redactions
                 })
         
-        # Save the redacted document
-        doc.save(output_path)
-        doc.close()
-        
         result = {
-            "input_file": pdf_path,
-            "output_file": output_path,
+            "document_id": document_id,
             "total_redactions": total_redactions,
             "pages_modified": len(redaction_summary),
             "summary": redaction_summary,
@@ -275,17 +437,18 @@ def redact_text_by_search(
 
 @mcp.tool()
 def redact_by_coordinates(
-    pdf_path: str,
-    output_path: str,
+    document_id: str,
     redactions: List[Dict[str, Any]],
     fill_color: Tuple[float, float, float] = (0, 0, 0),
     overlay_text: str = ""
 ) -> str:
-    """Redact specific areas of a PDF by coordinates.
+    """Redact specific areas of a loaded PDF document by coordinates.
+    
+    The document must be loaded first using load_pdf. Modifications are made in-memory.
+    Use save_pdf to write the changes to disk.
     
     Args:
-        pdf_path: Path to the input PDF file
-        output_path: Path where the redacted PDF will be saved
+        document_id: Identifier of the loaded document
         redactions: List of redaction areas, each with:
             - page: Page number (0-indexed)
             - bbox: Bounding box as [x0, y0, x1, y1]
@@ -297,9 +460,13 @@ def redact_by_coordinates(
         JSON string with summary of redactions applied
     """
     try:
-        pdf_path = resolve_pdf_path(pdf_path)
-        output_path = resolve_pdf_path(output_path)
-        doc = pymupdf.open(pdf_path)
+        if document_id not in DOCUMENT_STORE:
+            return json.dumps({
+                "error": f"Document '{document_id}' not found. Use load_pdf first.",
+                "available_documents": list(DOCUMENT_STORE.keys())
+            })
+        
+        doc = DOCUMENT_STORE[document_id]
         applied_redactions = []
         
         for redaction in redactions:
@@ -340,12 +507,8 @@ def redact_by_coordinates(
         for page in doc:
             page.apply_redactions()
         
-        doc.save(output_path)
-        doc.close()
-        
         result = {
-            "input_file": pdf_path,
-            "output_file": output_path,
+            "document_id": document_id,
             "total_redactions": len([r for r in applied_redactions if r.get("status") == "applied"]),
             "redactions": applied_redactions
         }
@@ -358,17 +521,18 @@ def redact_by_coordinates(
 
 @mcp.tool()
 def redact_images_in_pdf(
-    pdf_path: str,
-    output_path: str,
+    document_id: str,
     page_numbers: Optional[List[int]] = None,
     fill_color: Tuple[float, float, float] = (0, 0, 0),
     overlay_text: str = "[IMAGE REDACTED]"
 ) -> str:
-    """Redact all images in specified pages of a PDF.
+    """Redact all images in specified pages of a loaded PDF document.
+    
+    The document must be loaded first using load_pdf. Modifications are made in-memory.
+    Use save_pdf to write the changes to disk.
     
     Args:
-        pdf_path: Path to the input PDF file
-        output_path: Path where the redacted PDF will be saved
+        document_id: Identifier of the loaded document
         page_numbers: List of page numbers to process (0-indexed). If None, processes all pages
         fill_color: RGB color for redaction box (0-1 range). Default is black (0,0,0)
         overlay_text: Text to display over redacted images
@@ -377,9 +541,13 @@ def redact_images_in_pdf(
         JSON string with summary of image redactions
     """
     try:
-        pdf_path = resolve_pdf_path(pdf_path)
-        output_path = resolve_pdf_path(output_path)
-        doc = pymupdf.open(pdf_path)
+        if document_id not in DOCUMENT_STORE:
+            return json.dumps({
+                "error": f"Document '{document_id}' not found. Use load_pdf first.",
+                "available_documents": list(DOCUMENT_STORE.keys())
+            })
+        
+        doc = DOCUMENT_STORE[document_id]
         total_images_redacted = 0
         summary = []
         
@@ -418,12 +586,8 @@ def redact_images_in_pdf(
                     "images_redacted": page_images
                 })
         
-        doc.save(output_path)
-        doc.close()
-        
         result = {
-            "input_file": pdf_path,
-            "output_file": output_path,
+            "document_id": document_id,
             "total_images_redacted": total_images_redacted,
             "pages_processed": len(summary),
             "summary": summary
@@ -437,26 +601,37 @@ def redact_images_in_pdf(
 
 @mcp.tool()
 def verify_redactions(
-    original_pdf: str,
-    redacted_pdf: str,
+    original_document_id: str,
+    redacted_document_id: str,
     search_strings: Optional[List[str]] = None
 ) -> str:
-    """Verify that redactions were applied correctly by comparing original and redacted PDFs.
+    """Verify that redactions were applied correctly by comparing two loaded PDF documents.
+    
+    Both documents must be loaded first using load_pdf.
     
     Args:
-        original_pdf: Path to the original PDF file
-        redacted_pdf: Path to the redacted PDF file
+        original_document_id: Identifier of the original document
+        redacted_document_id: Identifier of the redacted document
         search_strings: Optional list of strings that should no longer appear in redacted PDF
     
     Returns:
         JSON string with verification results
     """
     try:
-        original_pdf = resolve_pdf_path(original_pdf)
-        redacted_pdf = resolve_pdf_path(redacted_pdf)
-        orig_doc = pymupdf.open(original_pdf)
-        redact_doc = pymupdf.open(redacted_pdf)
-        redact_doc = pymupdf.open(redacted_pdf)
+        if original_document_id not in DOCUMENT_STORE:
+            return json.dumps({
+                "error": f"Original document '{original_document_id}' not found. Use load_pdf first.",
+                "available_documents": list(DOCUMENT_STORE.keys())
+            })
+        
+        if redacted_document_id not in DOCUMENT_STORE:
+            return json.dumps({
+                "error": f"Redacted document '{redacted_document_id}' not found. Use load_pdf first.",
+                "available_documents": list(DOCUMENT_STORE.keys())
+            })
+        
+        orig_doc = DOCUMENT_STORE[original_document_id]
+        redact_doc = DOCUMENT_STORE[redacted_document_id]
         
         verification = {
             "original_pages": len(orig_doc),
@@ -502,9 +677,6 @@ def verify_redactions(
                 "text_modified": orig_text != redact_text
             })
         
-        orig_doc.close()
-        redact_doc.close()
-        
         # Overall verdict
         all_checks_passed = all(
             check["status"] == "PASS" 
@@ -524,21 +696,28 @@ def verify_redactions(
 
 
 @mcp.tool()
-def get_pdf_info(pdf_path: str) -> str:
-    """Get basic information about a PDF file.
+def get_pdf_info(document_id: str) -> str:
+    """Get basic information about a loaded PDF document.
+    
+    The document must be loaded first using load_pdf.
     
     Args:
-        pdf_path: Path to the PDF file
+        document_id: Identifier of the loaded document
     
     Returns:
         JSON string with PDF metadata and structure information
     """
     try:
-        pdf_path = resolve_pdf_path(pdf_path)
-        doc = pymupdf.open(pdf_path)
+        if document_id not in DOCUMENT_STORE:
+            return json.dumps({
+                "error": f"Document '{document_id}' not found. Use load_pdf first.",
+                "available_documents": list(DOCUMENT_STORE.keys())
+            })
+        
+        doc = DOCUMENT_STORE[document_id]
         
         info = {
-            "filename": pdf_path,
+            "document_id": document_id,
             "pages": len(doc),
             "metadata": doc.metadata,
             "is_encrypted": doc.is_encrypted,
@@ -557,7 +736,6 @@ def get_pdf_info(pdf_path: str) -> str:
             }
             info["page_info"].append(page_info)
         
-        doc.close()
         return json.dumps(info, indent=2)
     
     except Exception as e:

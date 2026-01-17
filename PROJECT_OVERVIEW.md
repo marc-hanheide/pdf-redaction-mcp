@@ -2,7 +2,7 @@
 
 ## Summary
 
-A production-ready Model Context Protocol (MCP) server for comprehensive PDF redaction operations, built with FastMCP2 and pymupdf. Supports local PDF files for seamless integration with desktop applications.
+A production-ready Model Context Protocol (MCP) server for comprehensive PDF redaction operations, built with FastMCP2 and pymupdf. Features a session-based in-memory workflow that avoids repeated file I/O for efficient multi-step operations.
 
 ## Project Information
 
@@ -13,39 +13,46 @@ A production-ready Model Context Protocol (MCP) server for comprehensive PDF red
 - **PDF Library**: pymupdf 1.24+
 - **Package Manager**: UV
 - **License**: MIT
-- **Total Tools**: 7 (for local PDF files)
+- **Total Tools**: 11 (session-based workflow)
 
 ## Features
 
 ### Core Capabilities
 
-1. **Text Extraction**
+1. **Session Management**
+   - Load PDFs into memory once
+   - Perform multiple operations without repeated I/O
+   - Explicit save control for output
+   - Memory management with document cleanup
+   - List and manage multiple documents simultaneously
+
+2. **Text Extraction**
    - Multiple formats (plain text, JSON, structured blocks)
    - Page-specific or full document extraction
    - Preserves text structure and layout information
-   - Works with local PDF files
+   - Operates on in-memory documents
 
-2. **Text Search**
+3. **Text Search**
    - Exact string matching
    - Regular expression support
    - Case-sensitive/insensitive options
    - Returns bounding box coordinates
-   - Works with local PDF files
+   - Operates on in-memory documents
 
-3. **Text Redaction**
+4. **Text Redaction**
    - Search-based automatic redaction
    - Coordinate-based precise redaction
    - Customisable colours and overlay text
    - Batch processing across multiple pages
-   - Works with local PDF files
+   - Modifies documents in-memory
 
-4. **Image Redaction**
+5. **Image Redaction**
    - Complete image removal
    - Page-specific or document-wide
    - Customisable replacement text
-   - Works with local PDF files
+   - Modifies documents in-memory
 
-5. **Verification**
+6. **Verification**
    - Confirm redactions were applied
    - Compare original vs redacted
    - Search for remaining sensitive data

@@ -6,6 +6,8 @@ A Model Context Protocol (MCP) server that provides comprehensive PDF redaction 
 
 This MCP server enables LLMs to:
 
+- **Session-based in-memory operations** - load PDFs once and perform multiple operations without repeated file I/O
+- **Load and save PDFs** - explicit control over when documents are read from and written to disk
 - **Extract text from PDFs** in multiple formats (plain text, JSON, or structured blocks)
 - **Search for text patterns** using exact match or regex with location information
 - **Redact text by search** - automatically find and redact all occurrences of specified strings
@@ -76,41 +78,112 @@ uv run pdf-redaction-mcp --transport sse --port 8000 --pdf-dir ~/Documents/pdfs
 
 ### Available Tools
 
-All tools work with local PDF files on disk.
+All tools work with in-memory PDF documents using a session-based workflow:
+1. **Load** a PDF into memory with `load_pdf`
+2. **Operate** on it with any of the tools below
+3. **Save** changes to disk with `save_pdf`
+
+This approach avoids repeated file I/O and allows multiple operations on the same document efficiently.
 
 ---
 
-#### 1. `extract_text_from_pdf`
+#### 1. `load_pdf`
 
-Extract text from a PDF for LLM consumption.
+Load a PDF file into memory for session-based operations.
 
 **Parameters:**
-- `pdf_path` (str): Path to the PDF file
+- `pdf_path` (str): Path to the PDF file to load
+- `document_id` (str, optional): Identifier for this document (defaults to filename)
+
+**Returns:** JSON with document_id and basic info
+
+**Example:**
+```python
+load_pdf(
+    pdf_path="/path/to/document.pdf",
+    document_id="my_doc"
+)
+# Returns: {"document_id": "my_doc", "pages": 10, "status": "loaded"}
+```
+
+#### 2. `save_pdf`
+
+Save an in-memory PDF document to disk.
+
+**Parameters:**
+- `document_id` (str): Identifier of the loaded document
+- `output_path` (str): Path where the PDF will be saved
+
+**Returns:** JSON with save confirmation
+
+**Example:**
+```python
+save_pdf(
+    document_id="my_doc",
+    output_path="/path/to/output.pdf"
+)
+```
+
+#### 3. `close_pdf`
+
+Close and remove an in-memory PDF document to free memory.
+
+**Parameters:**
+- `document_id` (str): Identifier of the loaded document
+
+**Returns:** JSON with close confirmation
+
+**Example:**
+```python
+close_pdf(document_id="my_doc")
+```
+
+#### 4. `list_loaded_pdfs`
+
+List all currently loaded PDF documents in memory.
+
+**Returns:** JSON with information about all loaded documents
+
+**Example:**
+```python
+list_loaded_pdfs()
+# Returns: {"total_documents": 2, "documents": [{...}, {...}]}
+```
+
+#### 5. `extract_text_from_pdf`
+
+Extract text from a loaded PDF document.
+
+**Parameters:**
+- `document_id` (str): Identifier of the loaded document
 - `page_number` (int, optional): Specific page to extract (0-indexed)
 - `format` (str): Output format - "text", "json", or "blocks"
 
 **Example:**
 ```python
+# Load document first
+load_pdf(pdf_path="/path/to/document.pdf", document_id="doc1")
+
 # Extract all text
 extract_text_from_pdf(
-    pdf_path="/path/to/document.pdf",
+    document_id="doc1",
     format="text"
 )
 
 # Extract specific page as JSON
 extract_text_from_pdf(
-    pdf_path="/path/to/document.pdf",
+    document_id="doc1",
     page_number=0,
     format="json"
 )
 ```
 
-#### 2. `search_text_in_pdf`
+#### 6. `search_text_in_pdf`
 
-Search for text patterns and get their locations.
+Search for text patterns and get their locations in a loaded PDF document.
 
 **Parameters:**
-- `pdf_path` (str): Path to the PDF file
+- `document_id` (str): Identifier of the loaded document
 - `search_string` (str): Text or regex pattern to search for
 - `case_sensitive` (bool): Whether search should be case sensitive
 - `use_regex` (bool): Whether to treat search_string as regex
@@ -118,116 +191,137 @@ Search for text patterns and get their locations.
 
 **Example:**
 ```python
+# Load document first
+load_pdf(pdf_path="/path/to/document.pdf", document_id="doc1")
+
 # Search for email addresses using regex
 search_text_in_pdf(
-    pdf_path="/path/to/document.pdf",
+    document_id="doc1",
     search_string=r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
     use_regex=True
 )
 ```
 
-#### 3. `redact_text_by_search`
+#### 7. `redact_text_by_search`
 
-Automatically find and redact all occurrences of specified strings.
+Automatically find and redact all occurrences of specified strings in a loaded PDF document.
 
 **Parameters:**
-- `pdf_path` (str): Path to input PDF
-- `output_path` (str): Path for redacted PDF
+- `document_id` (str): Identifier of the loaded document
 - `search_strings` (List[str]): List of strings to redact
-- `case_sensitive` (bool): Whether search is case sensitive
 - `fill_color` (Tuple[float, float, float]): RGB colour (0-1 range)
 - `overlay_text` (str): Optional text over redacted area
 - `text_color` (Tuple[float, float, float]): RGB colour for overlay text
 
 **Example:**
 ```python
-# Redact sensitive information
+# Load document
+load_pdf(pdf_path="/path/to/input.pdf", document_id="doc1")
+
+# Redact sensitive information (modifies in-memory document)
 redact_text_by_search(
-    pdf_path="/path/to/input.pdf",
-    output_path="/path/to/redacted.pdf",
+    document_id="doc1",
     search_strings=["CONFIDENTIAL", "john.doe@example.com", "123-45-6789"],
     fill_color=(0, 0, 0),  # Black
     overlay_text="[REDACTED]"
 )
+
+# Save the redacted document
+save_pdf(document_id="doc1", output_path="/path/to/redacted.pdf")
 ```
 
-#### 4. `redact_by_coordinates`
+#### 8. `redact_by_coordinates`
 
-Redact specific areas by their exact coordinates.
+Redact specific areas by their exact coordinates in a loaded PDF document.
 
 **Parameters:**
-- `pdf_path` (str): Path to input PDF
-- `output_path` (str): Path for redacted PDF
+- `document_id` (str): Identifier of the loaded document
 - `redactions` (List[Dict]): List of redaction areas with page, bbox, and optional text
 - `fill_color` (Tuple[float, float, float]): RGB colour
 - `overlay_text` (str): Default overlay text
 
 **Example:**
 ```python
-# Redact specific areas
+# Load document
+load_pdf(pdf_path="/path/to/input.pdf", document_id="doc1")
+
+# Redact specific areas (modifies in-memory document)
 redact_by_coordinates(
-    pdf_path="/path/to/input.pdf",
-    output_path="/path/to/redacted.pdf",
+    document_id="doc1",
     redactions=[
         {"page": 0, "bbox": [100, 100, 300, 150], "text": "REDACTED"},
         {"page": 1, "bbox": [50, 200, 250, 250]}
     ],
     fill_color=(0, 0, 0)
 )
+
+# Save the redacted document
+save_pdf(document_id="doc1", output_path="/path/to/redacted.pdf")
 ```
 
-#### 5. `redact_images_in_pdf`
+#### 9. `redact_images_in_pdf`
 
-Remove all images from specified pages.
+Remove all images from specified pages of a loaded PDF document.
 
 **Parameters:**
-- `pdf_path` (str): Path to input PDF
-- `output_path` (str): Path for redacted PDF
+- `document_id` (str): Identifier of the loaded document
 - `page_numbers` (List[int], optional): Pages to process (all if None)
 - `fill_color` (Tuple[float, float, float]): RGB colour
 - `overlay_text` (str): Text over redacted images
 
 **Example:**
 ```python
-# Redact all images on first two pages
+# Load document
+load_pdf(pdf_path="/path/to/input.pdf", document_id="doc1")
+
+# Redact all images on first two pages (modifies in-memory document)
 redact_images_in_pdf(
-    pdf_path="/path/to/input.pdf",
-    output_path="/path/to/no_images.pdf",
+    document_id="doc1",
     page_numbers=[0, 1],
     overlay_text="[IMAGE REMOVED]"
 )
+
+# Save the redacted document
+save_pdf(document_id="doc1", output_path="/path/to/no_images.pdf")
 ```
 
-#### 6. `verify_redactions`
+#### 10. `verify_redactions`
 
-Verify that redactions were applied correctly.
+Verify that redactions were applied correctly by comparing two loaded PDF documents.
 
 **Parameters:**
-- `original_pdf` (str): Path to original PDF
-- `redacted_pdf` (str): Path to redacted PDF
+- `original_document_id` (str): Identifier of the original document
+- `redacted_document_id` (str): Identifier of the redacted document
 - `search_strings` (List[str], optional): Strings that should be gone
 
 **Example:**
 ```python
+# Load both documents
+load_pdf(pdf_path="/path/to/original.pdf", document_id="original")
+load_pdf(pdf_path="/path/to/redacted.pdf", document_id="redacted")
+
 # Verify sensitive data was removed
 verify_redactions(
-    original_pdf="/path/to/original.pdf",
-    redacted_pdf="/path/to/redacted.pdf",
+    original_document_id="original",
+    redacted_document_id="redacted",
     search_strings=["CONFIDENTIAL", "secret@example.com"]
 )
 ```
 
-#### 7. `get_pdf_info`
+#### 11. `get_pdf_info`
 
-Get metadata and structure information about a PDF.
+Get metadata and structure information about a loaded PDF document.
 
 **Parameters:**
-- `pdf_path` (str): Path to PDF file
+- `document_id` (str): Identifier of the loaded document
 
 **Example:**
 ```python
+# Load document first
+load_pdf(pdf_path="/path/to/document.pdf", document_id="doc1")
+
 # Get PDF information
-get_pdf_info(pdf_path="/path/to/document.pdf")
+get_pdf_info(document_id="doc1")
 ```
 
 ---
@@ -425,55 +519,61 @@ Use project-relative paths during development:
 
 ### Example 1: Redact Personal Information
 
-**Without --pdf-dir flag:**
+**Session-based workflow (new approach):**
 ```
-User: "Please redact all email addresses from /Users/john/Documents/reports/report.pdf"
+User: "Please redact all email addresses and phone numbers from report.pdf"
 
-LLM uses: redact_text_by_search(
-  pdf_path="/Users/john/Documents/reports/report.pdf",
-  output_path="/Users/john/Documents/reports/report_redacted.pdf",
-  ...
-)
-```
+1. LLM loads the document:
+   load_pdf(pdf_path="report.pdf", document_id="report")
 
-**With --pdf-dir flag (configured as /Users/john/Documents/reports):**
-```
-User: "Please redact all email addresses from report.pdf"
+2. LLM searches for patterns:
+   search_text_in_pdf(
+     document_id="report",
+     search_string=r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+     use_regex=True
+   )
 
-LLM uses: redact_text_by_search(
-  pdf_path="report.pdf",  # Automatically resolved to full path
-  output_path="report_redacted.pdf",
-  ...
-)
-```
+3. LLM redacts in-memory:
+   redact_text_by_search(
+     document_id="report",
+     search_strings=["john@example.com", "555-123-4567", ...]
+   )
 
-**Workflow:**
-```
-1. User: "Please redact all email addresses and phone numbers from report.pdf"
-
-2. LLM uses search_text_in_pdf to find patterns:
-   - Email regex: \b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b
-   - Phone regex: \b\d{3}[-.]?\d{3}[-.]?\d{4}\b
-
-3. LLM uses redact_text_by_search with found strings
-
-4. LLM uses verify_redactions to confirm removal
+4. LLM saves the result:
+   save_pdf(document_id="report", output_path="report_redacted.pdf")
 
 5. LLM reports: "Successfully redacted 5 email addresses and 3 phone numbers"
 ```
+
+**Benefits of session-based approach:**
+- PDF loaded once, multiple operations performed
+- No repeated file I/O
+- Can verify, modify, and re-verify without reloading
 
 ### Example 2: Redact Specific Section
 
 ```
 1. User: "Redact the financial table on page 3 of the report"
 
-2. LLM uses extract_text_from_pdf with page_number=2, format="blocks"
+2. LLM loads document:
+   load_pdf(pdf_path="report.pdf", document_id="report")
 
-3. LLM identifies table coordinates from block structure
+3. LLM extracts page structure:
+   extract_text_from_pdf(document_id="report", page_number=2, format="blocks")
 
-4. LLM uses redact_by_coordinates with calculated bbox
+4. LLM identifies table coordinates from block structure
 
-5. LLM uses extract_text_from_pdf again to verify section is gone
+5. LLM redacts in-memory:
+   redact_by_coordinates(
+     document_id="report",
+     redactions=[{"page": 2, "bbox": [100, 200, 500, 400]}]
+   )
+
+6. LLM verifies by extracting text again:
+   extract_text_from_pdf(document_id="report", page_number=2)
+
+7. LLM saves:
+   save_pdf(document_id="report", output_path="report_redacted.pdf")
 ```
 
 ### Example 3: Remove All Images
@@ -481,9 +581,64 @@ LLM uses: redact_text_by_search(
 ```
 1. User: "Remove all images from the document but keep the text"
 
-2. LLM uses get_pdf_info to see which pages have images
+2. LLM loads document:
+   load_pdf(pdf_path="document.pdf", document_id="doc")
 
-3. LLM uses redact_images_in_pdf on those pages
+3. LLM checks for images:
+   get_pdf_info(document_id="doc")
+
+4. LLM redacts images:
+   redact_images_in_pdf(document_id="doc")
+
+5. LLM verifies and saves:
+   get_pdf_info(document_id="doc")  # Verify images are gone
+   save_pdf(document_id="doc", output_path="document_no_images.pdf")
+   
+6. LLM cleans up:
+   close_pdf(document_id="doc")  # Free memory
+```
+
+### Example 4: Multi-Step Verification Workflow
+
+```
+1. User: "Redact all SSNs, then verify they're gone, then redact names too"
+
+2. LLM loads document:
+   load_pdf(pdf_path="sensitive.pdf", document_id="sensitive")
+
+3. LLM redacts SSNs:
+   redact_text_by_search(
+     document_id="sensitive",
+     search_strings=[r"\d{3}-\d{2}-\d{4}"],
+     use_regex=True
+   )
+
+4. LLM creates checkpoint by saving:
+   save_pdf(document_id="sensitive", output_path="sensitive_step1.pdf")
+
+5. LLM loads original for comparison:
+   load_pdf(pdf_path="sensitive.pdf", document_id="original")
+
+6. LLM verifies:
+   verify_redactions(
+     original_document_id="original",
+     redacted_document_id="sensitive",
+     search_strings=["123-45-6789", "987-65-4321"]
+   )
+
+7. LLM continues with name redaction:
+   redact_text_by_search(
+     document_id="sensitive",
+     search_strings=["John Doe", "Jane Smith"]
+   )
+
+8. LLM saves final version:
+   save_pdf(document_id="sensitive", output_path="sensitive_final.pdf")
+
+9. LLM cleans up:
+   close_pdf(document_id="original")
+   close_pdf(document_id="sensitive")
+```
 
 4. LLM verifies using get_pdf_info that images are gone
 ```

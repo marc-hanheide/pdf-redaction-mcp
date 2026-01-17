@@ -17,6 +17,10 @@ def test_tools_registered():
     from pdf_redaction_mcp.server import mcp
     
     expected_tools = [
+        "load_pdf",
+        "save_pdf",
+        "close_pdf",
+        "list_loaded_pdfs",
         "extract_text_from_pdf",
         "search_text_in_pdf",
         "redact_text_by_search",
@@ -42,7 +46,7 @@ def test_tools_registered():
 
 
 def test_extract_text_error_handling():
-    """Test error handling for non-existent PDF."""
+    """Test error handling for non-existent document ID."""
     # Import the actual function, not the decorated version
     from pdf_redaction_mcp import server
     
@@ -52,17 +56,18 @@ def test_extract_text_error_handling():
         extract_fn = extract_fn.fn
     
     result = extract_fn(
-        pdf_path="/nonexistent/file.pdf",
+        document_id="nonexistent_doc",
         format="text"
     )
     
     # Should return error as JSON
     result_dict = json.loads(result)
     assert "error" in result_dict
+    assert "not found" in result_dict["error"].lower()
 
 
 def test_search_text_error_handling():
-    """Test error handling for search in non-existent PDF."""
+    """Test error handling for search in non-existent document."""
     from pdf_redaction_mcp import server
     
     # Get the actual function
@@ -71,17 +76,18 @@ def test_search_text_error_handling():
         search_fn = search_fn.fn
     
     result = search_fn(
-        pdf_path="/nonexistent/file.pdf",
+        document_id="nonexistent_doc",
         search_string="test"
     )
     
     # Should return error as JSON
     result_dict = json.loads(result)
     assert "error" in result_dict
+    assert "not found" in result_dict["error"].lower()
 
 
 def test_get_pdf_info_error_handling():
-    """Test error handling for PDF info on non-existent file."""
+    """Test error handling for PDF info on non-existent document."""
     from pdf_redaction_mcp import server
     
     # Get the actual function
@@ -89,11 +95,50 @@ def test_get_pdf_info_error_handling():
     if hasattr(info_fn, 'fn'):
         info_fn = info_fn.fn
     
-    result = info_fn(pdf_path="/nonexistent/file.pdf")
+    result = info_fn(document_id="nonexistent_doc")
     
     # Should return error as JSON
     result_dict = json.loads(result)
     assert "error" in result_dict
+    assert "not found" in result_dict["error"].lower()
+
+
+def test_load_pdf_error_handling():
+    """Test error handling for loading non-existent PDF file."""
+    from pdf_redaction_mcp import server
+    
+    # Get the actual function
+    load_fn = server.load_pdf
+    if hasattr(load_fn, 'fn'):
+        load_fn = load_fn.fn
+    
+    result = load_fn(pdf_path="/nonexistent/file.pdf")
+    
+    # Should return error as JSON
+    result_dict = json.loads(result)
+    assert "error" in result_dict
+
+
+def test_list_loaded_pdfs():
+    """Test listing loaded PDFs when none are loaded."""
+    from pdf_redaction_mcp import server
+    
+    # Clear any loaded documents first
+    server.DOCUMENT_STORE.clear()
+    
+    # Get the actual function
+    list_fn = server.list_loaded_pdfs
+    if hasattr(list_fn, 'fn'):
+        list_fn = list_fn.fn
+    
+    result = list_fn()
+    
+    # Should return valid JSON with empty list
+    result_dict = json.loads(result)
+    assert "total_documents" in result_dict
+    assert result_dict["total_documents"] == 0
+    assert "documents" in result_dict
+    assert len(result_dict["documents"]) == 0
 
 
 # Note: Full integration tests would require actual PDF files

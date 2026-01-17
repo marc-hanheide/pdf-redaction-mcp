@@ -2,18 +2,29 @@
 
 ## Project Overview
 
-A Model Context Protocol (MCP) server for PDF redaction using **FastMCP 2.x** and **pymupdf**. This server provides 7 tools for extracting, searching, and redacting text/images in PDFs with local files. Version 0.2.0.
+A Model Context Protocol (MCP) server for PDF redaction using **FastMCP 2.x** and **pymupdf**. This server provides 11 tools for session-based PDF operations - load, extract, search, redact text/images, save, and manage documents in memory. Version 0.2.0.
 
 ## Architecture
 
-All tools register to a single `mcp = FastMCP("PDF Redaction Server")` instance at module level ([server.py](src/pdf_redaction_mcp/server.py#L19)). Use `@mcp.tool()` decorator for all new tools.
+All tools register to a single `mcp = FastMCP("PDF Redaction Server")` instance at module level ([server.py](src/pdf_redaction_mcp/server.py)). Use `@mcp.tool()` decorator for all new tools.
+
+### Session-Based In-Memory Workflow
+
+**NEW in v0.2.0**: Documents are loaded into memory once and operated on without repeated file I/O.
+
+- `DOCUMENT_STORE` dictionary: Maps `document_id` -> `pymupdf.Document` objects
+- Documents persist in memory across multiple operations
+- Explicit `load_pdf()` and `save_pdf()` for I/O control
+- Use `close_pdf()` to free memory when done
 
 ### PDF Path Resolution
 
-File-based tools use `resolve_pdf_path()` to handle relative paths:
+Only `load_pdf()` uses file paths. It uses `resolve_pdf_path()` to handle relative paths:
 - If `--pdf-dir` is set, relative paths are resolved against it
 - Absolute paths are used as-is
 - Global `PDF_BASE_DIR` variable stores the configured base directory
+
+All other tools work with `document_id` instead of file paths.
 
 ## Development Workflow
 
@@ -45,23 +56,28 @@ uv run pdf-redaction-mcp --transport sse --port 8000 --pdf-dir ./documents
 Tests in [tests/test_server.py](tests/test_server.py):
 - Import functions directly from `pdf_redaction_mcp.server` module
 - Handle FastMCP decoration: `if hasattr(fn, 'fn'): fn = fn.fn`
-- Test error handling with non-existent files (should return JSON with `"error"` key)
+- Test error handling with non-existent document IDs (should return JSON with `"error"` key)
 - No real PDF fixtures currently - tests focus on error handling and structure
 
 ### Adding New Tools
 
-All tools work with local PDF files only.
+All tools work with in-memory documents (not file paths).
 
 1. **Create the tool**:
    ```python
    @mcp.tool()
-   def new_feature(pdf_path: str, ...) -> str:
+   def new_feature(document_id: str, ...) -> str:
        """Docstring explaining the tool."""
        try:
-           pdf_path = resolve_pdf_path(pdf_path)  # Always resolve paths first
-           doc = pymupdf.open(pdf_path)
-           # ... implementation
-           doc.close()
+           # Check if document is loaded
+           if document_id not in DOCUMENT_STORE:
+               return json.dumps({
+                   "error": f"Document '{document_id}' not found. Use load_pdf first.",
+                   "available_documents": list(DOCUMENT_STORE.keys())
+               })
+           
+           doc = DOCUMENT_STORE[document_id]
+           # ... implementation (NO doc.close() - document stays in memory)
            return json.dumps(result)
        except Exception as e:
            return json.dumps({"error": str(e)})
@@ -69,7 +85,9 @@ All tools work with local PDF files only.
 
 2. **Always return JSON strings** for structured data or errors
 
-3. **Add to README.md** in the Available Tools section
+3. **Never close documents** in operation tools - they remain in memory for multiple operations
+
+4. **Add to README.md** in the Available Tools section
 
 ## Project Conventions
 
@@ -91,7 +109,7 @@ Always 0-indexed throughout the codebase. Display as 1-indexed only in user-faci
 
 ### Document Cleanup
 
-Always call `doc.close()` after pymupdf operations, even in error paths.
+Only call `doc.close()` in the `close_pdf()` tool. All other tools leave documents in memory for reuse across operations.
 
 ### Coordinate System
 
@@ -134,22 +152,46 @@ Entry point [server.py main()](src/pdf_redaction_mcp/server.py) uses argparse fo
 
 ## Common Operations
 
+### Load a PDF into memory
+```python
+load_pdf(pdf_path="document.pdf", document_id="doc1")  # Returns JSON with doc info
+```
+
 ### Extract text with structure
 ```python
-extract_text_from_pdf(pdf_path, format="blocks")  # Returns JSON with block-level info
+extract_text_from_pdf(document_id="doc1", format="blocks")  # Returns JSON with block-level info
 ```
 
 ### Search with regex
 ```python
-search_text_in_pdf(pdf_path, search_string=r"\b\d{3}-\d{2}-\d{4}\b", use_regex=True)
+search_text_in_pdf(document_id="doc1", search_string=r"\b\d{3}-\d{2}-\d{4}\b", use_regex=True)
 ```
 
-### Redact by search (creates new file)
+### Redact by search (in-memory modification)
 ```python
-redact_text_by_search(pdf_path, output_path, search_string, apply_immediately=True)
+redact_text_by_search(document_id="doc1", search_strings=["SSN", "John Doe"])
+```
+
+### Save modified document
+```python
+save_pdf(document_id="doc1", output_path="redacted.pdf")
 ```
 
 ### Verify redactions worked
 ```python
-verify_redactions(original_path, redacted_path, sensitive_terms=["SSN", "John Doe"])
+# Load both documents first
+load_pdf(pdf_path="original.pdf", document_id="original")
+load_pdf(pdf_path="redacted.pdf", document_id="redacted")
+
+# Verify
+verify_redactions(
+    original_document_id="original",
+    redacted_document_id="redacted",
+    search_strings=["SSN", "John Doe"]
+)
+```
+
+### Clean up memory
+```python
+close_pdf(document_id="doc1")  # Frees memory
 ```
